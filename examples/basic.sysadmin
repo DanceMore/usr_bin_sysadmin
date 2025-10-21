@@ -1,0 +1,55 @@
+#!/usr/bin/sysadmin
+
+# Basic Example
+
+This is a simple example demonstrating the sysadmin file format.
+
+## Introduction
+
+Comments and documentation are written in Markdown.
+Any text that isn't in a code block is just displayed to the operator.
+
+## First Steps
+
+Let's start with a simple command:
+
+```bash
+echo "Hello, sysadmin!"
+```
+
+You can also run other commands:
+
+```bash
+date
+```
+
+### Working with files
+
+List the current directory:
+
+```bash
+ls -la
+```
+
+Check disk usage:
+
+```bash
+df -h
+```
+
+## Different Languages
+
+Not just bash! You can use other interpreters too:
+
+```python
+print("Hello from Python!")
+```
+
+```sh
+echo "This uses /bin/sh"
+```
+
+## That's it!
+
+This demonstrates the basic format. The operator reads each section,
+runs the commands manually, and presses Enter to continue to the next step.

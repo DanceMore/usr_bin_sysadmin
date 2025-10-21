@@ -1,0 +1,78 @@
+#!/usr/bin/sysadmin
+
+# Database Migration - Q4 2025
+
+This file guides you through migrating the production database
+to the new schema version 4.2.
+
+## Prerequisites
+
+Before starting, ensure:
+- You have production database credentials
+- A tested backup exists from the last hour
+- The maintenance window has started
+
+## Steps
+
+### Verify backup exists
+
+Check that the automated backup completed successfully:
+
+```bash
+ssh backuphost 'ls -lh /var/backups/db/latest.sql.gz'
+```
+
+You should see a file with today's date.
+
+### Stop application servers
+
+This prevents new writes during migration:
+
+```bash
+kubectl scale deployment/api-server --replicas=0
+```
+
+Wait for all pods to terminate before proceeding.
+
+### Run migration
+
+```bash
+psql -h proddb.internal -U dbadmin -f migration-v4.2.sql
+```
+
+You should see output indicating successful schema changes.
+Watch for any ERROR messages in the output.
+
+### Verify migration
+
+```bash
+psql -h proddb.internal -U dbadmin -c "SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1;"
+```
+
+Expected output: `4.2.0`
+
+### Restart application
+
+```bash
+kubectl scale deployment/api-server --replicas=5
+```
+
+Wait for all pods to be ready.
+
+### Verify application health
+
+```bash
+curl https://api.internal/health
+```
+
+Should return `{"status": "ok"}`
+
+## Rollback
+
+If issues occur after the migration, run:
+
+```bash
+psql -h proddb.internal -U dbadmin -f rollback-v4.2.sql
+```
+
+Then restart the application servers.
