@@ -14,7 +14,7 @@ Any text that isn't in a code block is just displayed to the operator.
 Let's start with a simple command:
 
 ```bash
-echo "Hello, sysadmin!"
+echo "Hello, sysadmin"
 ```
 
 You can also run other commands:
@@ -40,6 +40,8 @@ df -h
 ## Different Languages
 
 Not just bash! You can use other interpreters too:
+EDITORS NOTE: THIS IS A LIE
+I AM NOT EVEN SURE WE WANT TO IMPLEMENT THIS !!!!!
 
 ```python
 print("Hello from Python!")
