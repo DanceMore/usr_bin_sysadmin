@@ -82,7 +82,7 @@ impl TuiApp {
                 let total_steps = self.document.step_count();
                 let status_text = if total_steps > 0 {
                     format!(
-                        " Step {}/{} | ↑↓: Scroll | n: Next Step | s: Drop to Shell | q: Quit ",
+                        " Step {}/{} | ↑↓: Scroll | n: Next | p: Previous | s: Shell | q: Quit ",
                         self.current_step.min(total_steps),
                         total_steps
                     )
@@ -107,6 +107,9 @@ impl TuiApp {
                         }
                         KeyCode::Char('n') => {
                             self.next_step();
+                        }
+                        KeyCode::Char('p') => {
+                            self.previous_step();
                         }
                         KeyCode::Char('s') => {
                             self.drop_to_shell(terminal)?;
@@ -219,6 +222,52 @@ impl TuiApp {
         let total_steps = self.document.step_count();
         if self.current_step < total_steps {
             self.current_step += 1;
+            self.auto_scroll_to_current_step();
+        }
+    }
+
+    fn previous_step(&mut self) {
+        if self.current_step > 0 {
+            self.current_step = self.current_step.saturating_sub(1);
+            self.auto_scroll_to_current_step();
+        }
+    }
+
+    fn auto_scroll_to_current_step(&mut self) {
+        // Find the line number where the current step is
+        let code_blocks = self.document.code_blocks();
+        if self.current_step == 0 || self.current_step > code_blocks.len() {
+            return;
+        }
+
+        let target_code = code_blocks[self.current_step - 1];
+        let mut line_count = 0;
+
+        for section in &self.document.sections {
+            // Count header lines
+            if section.header.is_some() {
+                line_count += 3; // blank, header, blank
+            }
+
+            // Count lines in blocks
+            for block in &section.blocks {
+                match block {
+                    DocBlock::Text(text) => {
+                        line_count += text.lines().count() + 1; // +1 for blank after
+                    }
+                    DocBlock::Code(code) => {
+                        if code == target_code {
+                            // Found it! Set scroll to show this step near the top
+                            // Leave some context lines above (5 lines)
+                            self.scroll_offset = line_count.saturating_sub(5);
+                            return;
+                        }
+                        line_count += 1; // Step header
+                        line_count += code.content.lines().count();
+                        line_count += 1; // blank after
+                    }
+                }
+            }
         }
     }
 
