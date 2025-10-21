@@ -97,17 +97,27 @@ impl Renderer {
         Ok(())
     }
 
-    /// Render the continuation prompt
-    pub fn render_prompt(&self) -> Result<()> {
+    /// Render the shell prompt
+    pub fn render_shell_prompt(&self) -> Result<()> {
         let mut stdout = stdout();
 
         execute!(
             stdout,
-            SetForegroundColor(Color::DarkGrey),
-            Print("[Press Enter to continue, or Ctrl-C to exit] "),
-            ResetColor
+            SetForegroundColor(Color::Cyan),
+            Print("→ Dropping into shell. Run the command above, then type "),
+            SetForegroundColor(Color::Yellow),
+            Print("exit"),
+            SetForegroundColor(Color::Cyan),
+            Print(" or press "),
+            SetForegroundColor(Color::Yellow),
+            Print("Ctrl-D"),
+            SetForegroundColor(Color::Cyan),
+            Print(" to continue."),
+            ResetColor,
+            Print("\n")
         )?;
 
+        writeln!(stdout)?;
         stdout.flush()?;
         Ok(())
     }

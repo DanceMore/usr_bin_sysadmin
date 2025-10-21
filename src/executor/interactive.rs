@@ -1,5 +1,6 @@
-use anyhow::Result;
-use crossterm::event::{self, Event, KeyCode, KeyModifiers};
+use anyhow::{Context, Result};
+use std::env;
+use std::process::Command;
 
 use crate::model::{Block, Document};
 use crate::ui::Renderer;
@@ -36,8 +37,8 @@ impl InteractiveExecutor {
                     Block::Code(code) => {
                         self.renderer.render_code(code)?;
 
-                        // Wait for user confirmation
-                        self.wait_for_continue()?;
+                        // Drop into a sub-shell for the user to run the command
+                        self.drop_to_shell()?;
                     }
                 }
             }
@@ -47,28 +48,64 @@ impl InteractiveExecutor {
         Ok(())
     }
 
-    fn wait_for_continue(&self) -> Result<()> {
-        self.renderer.render_prompt()?;
+    /// Drop into a sub-shell for the user to execute commands
+    fn drop_to_shell(&self) -> Result<()> {
+        self.renderer.render_shell_prompt()?;
 
-        loop {
-            if let Event::Key(key_event) = event::read()? {
-                match key_event.code {
-                    KeyCode::Enter => {
-                        return Ok(());
-                    }
-                    KeyCode::Char('d') if key_event.modifiers.contains(KeyModifiers::CONTROL) => {
-                        return Ok(());
-                    }
-                    KeyCode::Char('c') if key_event.modifiers.contains(KeyModifiers::CONTROL) => {
-                        println!("\n\nInterrupted.");
-                        std::process::exit(130); // Standard exit code for SIGINT
-                    }
-                    _ => {
-                        // Ignore other keys
-                    }
+        // Get the user's shell, default to bash
+        let shell = env::var("SHELL").unwrap_or_else(|_| "/bin/bash".to_string());
+
+        // Determine shell type from path
+        let shell_name = std::path::Path::new(&shell)
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("bash");
+
+        // Set a custom prompt to make it obvious we're in a sysadmin sub-shell
+        let custom_prompt = "%F{magenta}[sysadmin]%f $ ";
+        let custom_ps1 = "\x1b[1;35m[sysadmin]\x1b[0m $ ";
+        
+        // Spawn a sub-shell with custom prompt
+        let mut cmd = Command::new(&shell);
+        
+        // Set prompt based on shell type
+        match shell_name {
+            "zsh" => {
+                cmd.env("PROMPT", custom_prompt);
+                // Also set PS1 for compatibility
+                cmd.env("PS1", custom_ps1);
+            }
+            "fish" => {
+                // Fish uses a function, but we can try setting a simple prompt
+                cmd.env("fish_greeting", "");
+                // Fish doesn't use PS1, we'd need to write a function
+                // For now, just let fish use its default
+            }
+            _ => {
+                // bash, sh, and most others use PS1
+                cmd.env("PS1", custom_ps1);
+            }
+        }
+
+        let status = cmd
+            .stdin(std::process::Stdio::inherit())
+            .stdout(std::process::Stdio::inherit())
+            .stderr(std::process::Stdio::inherit())
+            .status()
+            .with_context(|| format!("Failed to spawn shell: {}", shell))?;
+
+        if !status.success() {
+            if let Some(code) = status.code() {
+                if code == 130 {
+                    // User pressed Ctrl-C in the shell
+                    println!("\nInterrupted.");
+                    std::process::exit(130);
                 }
             }
         }
+
+        println!(); // Add spacing after shell exits
+        Ok(())
     }
 }
 

@@ -21,6 +21,12 @@ pub enum Commands {
         file: PathBuf,
     },
 
+    /// Execute with TUI interface
+    Tui {
+        /// Path to the .sysadmin file
+        file: PathBuf,
+    },
+
     /// Display all steps without executing (dry-run)
     DryRun {
         /// Path to the .sysadmin file

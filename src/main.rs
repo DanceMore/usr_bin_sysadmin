@@ -11,6 +11,7 @@ mod ui;
 use cli::{Cli, Commands};
 use executor::InteractiveExecutor;
 use parser::SysadminParser;
+use ui::TuiApp;
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
@@ -18,6 +19,7 @@ fn main() -> Result<()> {
     // Determine which file to process
     let file_path = match &cli.command {
         Some(Commands::Run { file }) => file,
+        Some(Commands::Tui { file }) => file,
         Some(Commands::DryRun { file }) => file,
         Some(Commands::View { file }) => file,
         None => {
@@ -28,6 +30,7 @@ fn main() -> Result<()> {
                 eprintln!();
                 eprintln!("Usage: sysadmin <file.sysadmin>");
                 eprintln!("       sysadmin run <file.sysadmin>");
+                eprintln!("       sysadmin tui <file.sysadmin>");
                 eprintln!("       sysadmin dry-run <file.sysadmin>");
                 eprintln!("       sysadmin view <file.sysadmin>");
                 std::process::exit(1);
@@ -49,6 +52,11 @@ fn main() -> Result<()> {
             // Default: interactive execution
             let mut executor = InteractiveExecutor::new();
             executor.execute(&document)?;
+        }
+        Some(Commands::Tui { .. }) => {
+            // TUI mode
+            let mut app = TuiApp::new(document);
+            app.run()?;
         }
         Some(Commands::DryRun { .. }) => {
             // Print all steps
