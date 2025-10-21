@@ -27,6 +27,7 @@ thiserror = "1.0"
 
 # Serialization (for future features)
 serde = { version = "1.0", features = ["derive"] }
+emojis = "0.8.0"
 
 [dev-dependencies]
 # Testing
