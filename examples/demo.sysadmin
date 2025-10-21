@@ -1,0 +1,144 @@
+#!/usr/bin/sysadmin
+
+# Production Database Cleanup
+
+This runbook demonstrates the visual features of sysadmin including
+warnings, danger alerts, and syntax highlighting.
+
+NOTE: Always run this during a maintenance window.
+
+## Prerequisites
+
+Before starting, ensure:
+- You have backup verification completed
+- All team members are notified
+- The change ticket is approved
+
+INFO: Expected duration is 15-20 minutes.
+
+## Step 1: Verify Environment
+
+First, let's check we're in the right environment:
+
+```bash
+# Check hostname
+hostname
+
+# Verify we're connected to the right database
+echo "Database host: $DB_HOST"
+psql -h $DB_HOST -c "SELECT current_database();"
+```
+
+## Step 2: Create Backup
+
+WARNING: Do not proceed without a verified backup!
+
+```bash
+# Create timestamped backup
+BACKUP_FILE="/var/backups/db_$(date +%Y%m%d_%H%M%S).sql.gz"
+pg_dump -h $DB_HOST production | gzip > $BACKUP_FILE
+
+# Verify backup was created
+ls -lh $BACKUP_FILE
+```
+
+## Step 3: Identify Old Records
+
+Let's see what we're going to clean up:
+
+```bash
+psql -h $DB_HOST production -c "
+SELECT COUNT(*) as old_records 
+FROM logs 
+WHERE created_at < NOW() - INTERVAL '90 days';
+"
+```
+
+INFO: This is a read-only query, safe to run multiple times.
+
+## Step 4: Archive Data
+
+Move old data to archive table:
+
+```bash
+psql -h $DB_HOST production -c "
+INSERT INTO logs_archive 
+SELECT * FROM logs 
+WHERE created_at < NOW() - INTERVAL '90 days';
+"
+```
+
+## Step 5: Delete Old Records
+
+DANGER: This step permanently deletes data from the production database!
+
+WARNING: Ensure the archive step completed successfully before proceeding.
+
+```bash
+psql -h $DB_HOST production -c "
+DELETE FROM logs 
+WHERE created_at < NOW() - INTERVAL '90 days';
+"
+```
+
+CRITICAL: If anything goes wrong, immediately proceed to the Rollback section.
+
+## Step 6: Vacuum and Analyze
+
+Clean up the database:
+
+```bash
+psql -h $DB_HOST production -c "VACUUM ANALYZE logs;"
+```
+
+## Step 7: Verify Results
+
+```bash
+# Check current record count
+psql -h $DB_HOST production -c "SELECT COUNT(*) FROM logs;"
+
+# Check archive count
+psql -h $DB_HOST production -c "SELECT COUNT(*) FROM logs_archive;"
+
+# Verify oldest record
+psql -h $DB_HOST production -c "
+SELECT MIN(created_at) as oldest_record FROM logs;
+"
+```
+
+## Completion
+
+All steps completed successfully! 
+
+NOTE: Document the number of records archived in the change ticket.
+
+---
+
+## Rollback Procedure
+
+If something went wrong, follow these steps:
+
+DANGER: Only run this if you need to restore from backup!
+
+### Restore from Backup
+
+```bash
+# Stop application
+systemctl stop myapp
+
+# Drop and recreate database
+dropdb -h $DB_HOST production --force
+createdb -h $DB_HOST production
+
+# Restore from backup
+gunzip -c $BACKUP_FILE | psql -h $DB_HOST production
+
+# Restart application
+systemctl start myapp
+```
+
+### Verify Restoration
+
+```bash
+psql -h $DB_HOST production -c "SELECT COUNT(*) FROM logs;"
+```
