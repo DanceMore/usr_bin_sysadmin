@@ -59,8 +59,8 @@ impl TuiApp {
                 let chunks = Layout::default()
                     .direction(Direction::Vertical)
                     .constraints([
-                        Constraint::Min(10),     // Runbook area
-                        Constraint::Length(3),   // Status bar
+                        Constraint::Min(10),   // Runbook area
+                        Constraint::Length(3), // Status bar
                     ])
                     .split(f.area());
 
@@ -102,15 +102,9 @@ impl TuiApp {
                 if let Event::Key(key) = event::read()? {
                     match key.code {
                         KeyCode::Char('q') => break,
-                        KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                            break
-                        }
-                        KeyCode::Char('n') => {
-                            self.next_step();
-                        }
-                        KeyCode::Char('p') => {
-                            self.previous_step();
-                        }
+                        KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => break,
+                        KeyCode::Char('n') => self.next_step(),
+                        KeyCode::Char('p') => self.previous_step(),
                         KeyCode::Char('s') => {
                             self.drop_to_shell(terminal)?;
                         }
@@ -143,6 +137,14 @@ impl TuiApp {
                     _ => Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
                 };
 
+                // Add visual separator for top-level sections
+                if level == 1 && section_idx > 0 {
+                    lines.push(Line::from(Span::styled(
+                        "─".repeat(60),
+                        Style::default().fg(Color::DarkGray),
+                    )));
+                }
+
                 lines.push(Line::from(""));
                 lines.push(Line::from(Span::styled(
                     format!("{} {}", "#".repeat(level as usize), header),
@@ -157,7 +159,42 @@ impl TuiApp {
                     DocBlock::Text(text) => {
                         for line in text.lines() {
                             if !line.trim().is_empty() {
-                                lines.push(Line::from(line.to_string()));
+                                // Check for warning/danger markers
+                                let styled_line = if line.to_uppercase().contains("WARNING")
+                                    || line.to_uppercase().contains("WARN")
+                                {
+                                    Line::from(vec![
+                                        Span::styled("⚠ ", Style::default().fg(Color::Yellow)),
+                                        Span::styled(line, Style::default().fg(Color::Yellow)),
+                                    ])
+                                } else if line.to_uppercase().contains("DANGER")
+                                    || line.to_uppercase().contains("CRITICAL")
+                                {
+                                    Line::from(vec![
+                                        Span::styled(
+                                            "⚠ ",
+                                            Style::default()
+                                                .fg(Color::Red)
+                                                .add_modifier(Modifier::BOLD),
+                                        ),
+                                        Span::styled(
+                                            line,
+                                            Style::default()
+                                                .fg(Color::Red)
+                                                .add_modifier(Modifier::BOLD),
+                                        ),
+                                    ])
+                                } else if line.to_uppercase().contains("NOTE")
+                                    || line.to_uppercase().contains("INFO")
+                                {
+                                    Line::from(vec![
+                                        Span::styled("ℹ ", Style::default().fg(Color::Blue)),
+                                        Span::styled(line, Style::default().fg(Color::Gray)),
+                                    ])
+                                } else {
+                                    Line::from(line.to_string())
+                                };
+                                lines.push(styled_line);
                             }
                         }
                         lines.push(Line::from(""));
@@ -173,40 +210,70 @@ impl TuiApp {
                         let is_current = step_num == self.current_step;
                         let is_completed = step_num < self.current_step;
 
-                        let step_style = if is_current {
-                            Style::default()
-                                .fg(Color::Yellow)
-                                .add_modifier(Modifier::BOLD)
+                        // Step header styling
+                        let (marker, step_style, box_char) = if is_completed {
+                            ("✓", Style::default().fg(Color::Green), "│")
+                        } else if is_current {
+                            (
+                                "→",
+                                Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+                                "┃",
+                            )
+                        } else {
+                            ("○", Style::default().fg(Color::DarkGray), "│")
+                        };
+
+                        // Check if this looks like a dangerous command (case-insensitive)
+                        let content_lower = code.content.to_lowercase();
+                        let is_dangerous = content_lower.contains("rm -rf")
+                            || content_lower.contains("drop table")
+                            || content_lower.contains("drop database")
+                            || content_lower.contains("delete ")
+                            || content_lower.contains("--force");
+
+                        let danger_marker = if is_dangerous {
+                            Span::styled(
+                                " [DANGER]",
+                                Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+                            )
+                        } else {
+                            Span::raw("")
+                        };
+
+                        lines.push(Line::from(vec![
+                            Span::styled(format!("{} ", marker), step_style),
+                            Span::styled(
+                                format!("Step {} [{}]:", step_num, code.language),
+                                step_style,
+                            ),
+                            danger_marker,
+                        ]));
+
+                        // Code content with syntax-aware styling
+                        let code_style = if is_current {
+                            Style::default().fg(Color::Green)
+                        } else if is_completed {
+                            Style::default().fg(Color::Green).add_modifier(Modifier::DIM)
+                        } else {
+                            Style::default().fg(Color::DarkGray)
+                        };
+
+                        let prefix_style = if is_current {
+                            Style::default().fg(Color::Yellow)
                         } else if is_completed {
                             Style::default().fg(Color::Green)
                         } else {
                             Style::default().fg(Color::DarkGray)
                         };
 
-                        let marker = if is_completed {
-                            "✓"
-                        } else if is_current {
-                            "→"
-                        } else {
-                            " "
-                        };
-
-                        lines.push(Line::from(Span::styled(
-                            format!("{} Step {} [{}]:", marker, step_num, code.language),
-                            step_style,
-                        )));
-
-                        let code_style = if is_current {
-                            Style::default().fg(Color::Green)
-                        } else {
-                            Style::default().fg(Color::DarkGray)
-                        };
-
                         for line in code.content.lines() {
-                            lines.push(Line::from(Span::styled(
-                                format!("  {}", line),
-                                code_style,
-                            )));
+                            // Simple syntax highlighting
+                            let highlighted = self.highlight_code_line(line, &code.language, &code_style);
+
+                            let mut spans = vec![Span::styled(format!("{} ", box_char), prefix_style)];
+                            spans.extend(highlighted);
+
+                            lines.push(Line::from(spans));
                         }
 
                         lines.push(Line::from(""));
@@ -216,6 +283,86 @@ impl TuiApp {
         }
 
         lines
+    }
+
+    fn highlight_code_line(&self, line: &str, language: &str, base_style: &Style) -> Vec<Span> {
+        // Simple syntax highlighting for shell commands; fallback to raw text for others.
+        if language == "bash" || language == "sh" {
+            let mut spans = Vec::new();
+            let trimmed = line.trim_start();
+            let indent_len = line.len().saturating_sub(trimmed.len());
+            let indent = &line[..indent_len];
+
+            if !indent.is_empty() {
+                spans.push(Span::raw(indent.to_string()));
+            }
+
+            if trimmed.is_empty() {
+                return spans;
+            }
+
+            // Comment
+            if trimmed.starts_with('#') {
+                spans.push(Span::styled(
+                    trimmed.to_string(),
+                    Style::default().fg(Color::DarkGray).add_modifier(Modifier::ITALIC),
+                ));
+                return spans;
+            }
+
+            let lower = trimmed.to_lowercase();
+
+            // Dangerous keywords highlight whole trimmed line red
+            if lower.contains("rm ") || lower.contains("rm -rf") || lower.contains("delete ")
+                || lower.contains("drop ") || lower.contains("--force")
+            {
+                spans.push(Span::styled(trimmed.to_string(), Style::default().fg(Color::Red)));
+                return spans;
+            }
+
+            // Split on '$' and highlight environment variables
+            if trimmed.contains('$') {
+                // We'll keep leading piece then each $var piece
+                let mut remaining = trimmed;
+                while let Some(dollar_idx) = remaining.find('$') {
+                    // push before $
+                    if dollar_idx > 0 {
+                        spans.push(Span::styled(
+                            remaining[..dollar_idx].to_string(),
+                            *base_style,
+                        ));
+                    }
+
+                    // process var after $
+                    let after = &remaining[dollar_idx + 1..];
+                    let var_end = after
+                        .find(|c: char| !c.is_alphanumeric() && c != '_')
+                        .unwrap_or(after.len());
+
+                    let var = &after[..var_end];
+                    spans.push(Span::styled(
+                        format!("${}", var),
+                        Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+                    ));
+
+                    // advance remaining
+                    remaining = &after[var_end..];
+                }
+
+                if !remaining.is_empty() {
+                    spans.push(Span::styled(remaining.to_string(), *base_style));
+                }
+
+                return spans;
+            }
+
+            // Pipes and redirects are just returned with base style (could be extended)
+            spans.push(Span::styled(trimmed.to_string(), *base_style));
+            spans
+        } else {
+            // For other languages, just use base style
+            vec![Span::styled(line.to_string(), *base_style)]
+        }
     }
 
     fn next_step(&mut self) {
@@ -283,7 +430,7 @@ impl TuiApp {
 
         // Clear screen and show current step
         print!("\x1B[2J\x1B[1;1H"); // Clear screen, move to top
-        
+
         let code_blocks = self.document.code_blocks();
         if self.current_step > 0 && self.current_step <= code_blocks.len() {
             let code = code_blocks[self.current_step - 1];
